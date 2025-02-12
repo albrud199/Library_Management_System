@@ -1,6 +1,311 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+// GEMINI
+// Define an enum for error codes
+typedef enum {
+    ERROR_NONE,
+    ERROR_MEMORY_ALLOCATION,
+    ERROR_INVALID_INPUT,
+    ERROR_BOOK_NOT_FOUND,
+    ERROR_NULL_POINTER,
+    ERROR_FILE_IO // Not used in this code, but good to include for completeness
+} ErrorCode;
+
+// Function to print error messages to stderr
+void printError(ErrorCode error) {
+    fprintf(stderr, "Error: ");
+    switch (error) {
+        case ERROR_MEMORY_ALLOCATION:
+            fprintf(stderr, "Memory allocation failed.\n");
+            break;
+        case ERROR_INVALID_INPUT:
+            fprintf(stderr, "Invalid input. Please check your input.\n");
+            break;
+        case ERROR_BOOK_NOT_FOUND:
+            fprintf(stderr, "Book not found in the library.\n");
+            break;
+        case ERROR_NULL_POINTER:
+            fprintf(stderr, "Null pointer error encountered.\n");
+            break;
+        case ERROR_FILE_IO:
+            fprintf(stderr, "File input/output error.\n");
+            break;
+        case ERROR_NONE: // No error, so no message needed
+        default:
+            fprintf(stderr, "An unspecified error occurred.\n");
+            break;
+    }
+}
+
+struct Book {
+    char *title;
+    char *author;
+    int year;
+};
+
+struct Library {
+    struct Book *books;
+    int numBooks;
+};
+
+// Function to add a book to the library with error handling
+ErrorCode addBook(struct Library *library, const char *title, const char *author, int year) {
+    if (library == NULL) {
+        return ERROR_NULL_POINTER;
+    }
+    if (title == NULL || author == NULL) {
+        return ERROR_INVALID_INPUT;
+    }
+
+    struct Book *tempBooks = realloc(library->books, (library->numBooks + 1) * sizeof(struct Book));
+    if (tempBooks == NULL) {
+        return ERROR_MEMORY_ALLOCATION;
+    }
+    library->books = tempBooks;
+
+    char *newTitle = malloc(strlen(title) + 1);
+    char *newAuthor = malloc(strlen(author) + 1);
+
+    if (newTitle == NULL || newAuthor == NULL) {
+        free(newTitle); // free title if allocated, even if author alloc fails
+        free(newAuthor); // free author if allocated, even if title alloc fails. Though one of them might be NULL due to alloc failure, free(NULL) is safe.
+        return ERROR_MEMORY_ALLOCATION;
+    }
+
+    strcpy(newTitle, title);
+    strcpy(newAuthor, author);
+
+    library->books[library->numBooks].title = newTitle;
+    library->books[library->numBooks].author = newAuthor;
+    library->books[library->numBooks].year = year;
+
+    library->numBooks++;
+    printf("Book added successfully.\n");
+    return ERROR_NONE;
+}
+
+// Function to display all books with error handling
+ErrorCode displayBooks(struct Library *library) {
+    if (library == NULL) {
+        return ERROR_NULL_POINTER;
+    }
+
+    printf("\nBooks in the library:\n");
+    if (library->numBooks == 0) {
+        printf("No books in the library.\n");
+        return ERROR_NONE;
+    }
+
+    for (int i = 0; i < library->numBooks; i++) {
+        if (library->books[i].title == NULL || library->books[i].author == NULL) {
+            fprintf(stderr, "Warning: Incomplete book information at index %d.\n", i);
+            printf("%d. Title: <Unknown>, Author: <Unknown>, Year: %d\n", i + 1, library->books[i].year);
+        } else {
+            printf("%d. Title: %s, Author: %s, Year: %d\n", i + 1,
+                   library->books[i].title,
+                   library->books[i].author,
+                   library->books[i].year);
+        }
+    }
+    return ERROR_NONE;
+}
+
+// Function to search for a book by title with error handling
+ErrorCode searchBook(struct Library *library, const char *title) {
+    if (library == NULL || title == NULL) {
+        return ERROR_NULL_POINTER;
+    }
+
+    printf("\nSearch results:\n");
+    for (int i = 0; i < library->numBooks; i++) {
+        if (library->books[i].title != NULL && strcmp(library->books[i].title, title) == 0) {
+            printf("Title: %s, Author: %s, Year: %d\n",
+                   library->books[i].title,
+                   library->books[i].author,
+                   library->books[i].year);
+            return ERROR_NONE; // Book found
+        }
+    }
+    printf("Book not found.\n");
+    return ERROR_BOOK_NOT_FOUND;
+}
+
+// Function to delete a book by title with error handling
+ErrorCode deleteBook(struct Library *library, const char *title) {
+    if (library == NULL || title == NULL) {
+        return ERROR_NULL_POINTER;
+    }
+
+    int bookIndex = -1;
+    for (int i = 0; i < library->numBooks; i++) {
+        if (library->books[i].title != NULL && strcmp(library->books[i].title, title) == 0) {
+            bookIndex = i;
+            break;
+        }
+    }
+
+    if (bookIndex == -1) {
+        printf("Book not found.\n");
+        return ERROR_BOOK_NOT_FOUND;
+    }
+
+    free(library->books[bookIndex].title);
+    free(library->books[bookIndex].author);
+
+    for (int j = bookIndex; j < library->numBooks - 1; j++) {
+        library->books[j] = library->books[j + 1];
+    }
+
+    library->numBooks--;
+    if (library->numBooks > 0) { // Only realloc if there are still books
+        struct Book *tempBooks = realloc(library->books, library->numBooks * sizeof(struct Book));
+        if (tempBooks == NULL && library->numBooks > 0) { // Realloc failed, but it's not critical for deletion functionality, just memory might be slightly more than needed.
+            fprintf(stderr, "Warning: Reallocation failed after deleting a book. Memory might not be optimally used.\n");
+            // In this case, we proceed without reallocation to avoid further complication and potential data loss.
+            // In a critical application, you might need to handle this more robustly, possibly by marking the library in an error state.
+        } else {
+            library->books = tempBooks;
+        }
+    } else {
+        free(library->books); // Free if no books left, set to NULL for consistency
+        library->books = NULL;
+    }
+
+    printf("Book deleted successfully.\n");
+    return ERROR_NONE;
+}
+
+// Function to free allocated memory with NULL check
+ErrorCode freeLibrary(struct Library *library) {
+    if (library == NULL) {
+        return ERROR_NULL_POINTER;
+    }
+
+    if (library->books != NULL) {
+        for (int i = 0; i < library->numBooks; i++) {
+            free(library->books[i].title);
+            free(library->books[i].author);
+        }
+        free(library->books);
+    }
+    library->books = NULL; // Set to NULL to prevent dangling pointer
+    library->numBooks = 0;
+    return ERROR_NONE;
+}
+
+// Main function with enhanced input validation and error handling
+int main() {
+    struct Library library;
+    library.books = NULL;
+    library.numBooks = 0;
+
+    int choice;
+    char inputBuffer[256]; // Buffer to read input
+
+    do {
+        printf("\nLibrary Management System\n");
+        printf("1. Add Book\n");
+        printf("2. Display Books\n");
+        printf("3. Search Book\n");
+        printf("4. Delete Book\n");
+        printf("5. Exit\n");
+        printf("Enter your choice: ");
+
+        if (fgets(inputBuffer, sizeof(inputBuffer), stdin) == NULL) {
+            printf("Error reading input.\n");
+            choice = 5; // Exit on input error
+            continue;
+        }
+
+        if (sscanf(inputBuffer, "%d", &choice) != 1) {
+            printf("Invalid input. Please enter a number between 1 and 5.\n");
+            choice = 0; // Invalid choice, loop again
+            continue;
+        }
+
+        switch (choice) {
+            case 1: {
+                char title[100], author[100];
+                int year;
+
+                printf("Enter book title: ");
+                if (fgets(title, sizeof(title), stdin) == NULL) {
+                    printf("Error reading title.\n");
+                    break;
+                }
+                title[strcspn(title, "\n")] = 0; // Remove trailing newline
+
+                printf("Enter author name: ");
+                if (fgets(author, sizeof(author), stdin) == NULL) {
+                    printf("Error reading author.\n");
+                    break;
+                }
+                author[strcspn(author, "\n")] = 0; // Remove trailing newline
+
+                printf("Enter publication year: ");
+                if (fgets(inputBuffer, sizeof(inputBuffer), stdin) == NULL) {
+                    printf("Error reading year.\n");
+                    break;
+                }
+                if (sscanf(inputBuffer, "%d", &year) != 1) {
+                    printf("Invalid year format. Please enter a number.\n");
+                    break;
+                }
+
+                ErrorCode result = addBook(&library, title, author, year);
+                if (result != ERROR_NONE) {
+                    printError(result);
+                }
+                break;
+            }
+            case 2:
+                displayBooks(&library);
+                break;
+            case 3: {
+                char searchTitle[100];
+                printf("Enter title to search: ");
+                if (fgets(searchTitle, sizeof(searchTitle), stdin) == NULL) {
+                    printf("Error reading search title.\n");
+                    break;
+                }
+                searchTitle[strcspn(searchTitle, "\n")] = 0; // Remove trailing newline
+                searchBook(&library, searchTitle);
+                break;
+            }
+            case 4: {
+                char deleteTitle[100];
+                printf("Enter title to delete: ");
+                if (fgets(deleteTitle, sizeof(deleteTitle), stdin) == NULL) {
+                    printf("Error reading delete title.\n");
+                    break;
+                }
+                deleteTitle[strcspn(deleteTitle, "\n")] = 0; // Remove trailing newline
+                ErrorCode result = deleteBook(&library, deleteTitle);
+                if (result != ERROR_NONE && result != ERROR_BOOK_NOT_FOUND) { // Only print error if it's not "book not found" which is normal flow
+                    printError(result);
+                }
+                break;
+            }
+            case 5:
+                printf("Exiting program...\n");
+                ErrorCode result_free = freeLibrary(&library);
+                if (result_free != ERROR_NONE && result_free != ERROR_NULL_POINTER) {
+                    printError(result_free); // Though freeing library should ideally not fail unless program logic is severely flawed.
+                }
+                break;
+            default:
+                printf("Invalid choice. Please try again.\n");
+        }
+    } while (choice != 5);
+
+    return 0;
+}
+
+=========================
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 //ds
 struct Book {
     char *title;
