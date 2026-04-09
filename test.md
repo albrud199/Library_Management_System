@@ -3102,4 +3102,4 @@ python -c "import tensorflow as tf; print(f'TensorFlow: {tf.__version__}')"
 ### Papers to Read
 
 1. **MobileNets** - Depthwise Separable Convolution
-2. **ResNeXt
+2. **ResNeXt** 
